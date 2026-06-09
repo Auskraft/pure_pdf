@@ -14,10 +14,11 @@ import kotlinx.coroutines.launch
 
 class SettingsViewModel(private val repository: SettingsRepository) : ViewModel() {
 
-    val settings: StateFlow<AppSettings> = repository.settings.stateIn(
+    // null = not loaded yet (keeps the splash navy on screen instead of flashing the consent gate).
+    val settings: StateFlow<AppSettings?> = repository.settings.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
-        initialValue = AppSettings(),
+        initialValue = null,
     )
 
     fun setDarkMode(value: Boolean) = viewModelScope.launch { repository.setDarkMode(value) }
@@ -25,4 +26,5 @@ class SettingsViewModel(private val repository: SettingsRepository) : ViewModel(
     fun setAccent(value: AccentPreset) = viewModelScope.launch { repository.setAccent(value) }
     fun setLibraryView(value: LibraryView) = viewModelScope.launch { repository.setLibraryView(value) }
     fun setDensity(value: Density) = viewModelScope.launch { repository.setDensity(value) }
+    fun setConsentAccepted(value: Boolean) = viewModelScope.launch { repository.setConsentAccepted(value) }
 }

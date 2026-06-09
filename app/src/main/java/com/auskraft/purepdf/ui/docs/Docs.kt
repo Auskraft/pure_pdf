@@ -34,10 +34,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.rounded.PictureAsPdf
+import androidx.compose.material3.Button
+import androidx.compose.ui.text.style.TextAlign
 
 enum class DocItem(val title: String, val body: String) {
+    Terms("Пользовательское соглашение", TERMS_BODY),
     Privacy("Политика конфиденциальности", PRIVACY_BODY),
-    Terms("Условия использования", TERMS_BODY),
+    DataProcessing("Обработка персональных данных", DATA_PROCESSING_BODY),
     Licenses("Открытый код и лицензии", LICENSES_BODY),
 }
 
@@ -122,5 +130,81 @@ private fun DocTopBar(title: String, onBack: () -> Unit) {
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(start = 4.dp),
         )
+    }
+}
+
+/** First-launch consent gate: shows the legal docs and an accept button. */
+@Composable
+fun ConsentScreen(onAccept: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    var selected by remember { mutableStateOf<DocItem?>(null) }
+    BackHandler(enabled = selected != null) { selected = null }
+
+    val item = selected
+    if (item != null) {
+        DocViewer(item = item, onBack = { selected = null })
+        return
+    }
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(colors.surface)
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Spacer(Modifier.weight(1f))
+        Box(
+            Modifier.size(72.dp).clip(RoundedCornerShape(20.dp)).background(colors.secondaryContainer),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Rounded.PictureAsPdf, null, tint = colors.onSecondaryContainer, modifier = Modifier.size(36.dp))
+        }
+        Spacer(Modifier.height(18.dp))
+        Text("Pure PDF", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = colors.onSurface)
+        Spacer(Modifier.height(10.dp))
+        Text(
+            "Просмотр PDF. Документы и данные остаются на вашем устройстве.",
+            fontSize = 14.sp,
+            color = colors.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            lineHeight = 21.sp,
+        )
+        Spacer(Modifier.height(24.dp))
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(colors.surfaceContainerLow)
+                .border(1.dp, colors.outlineVariant, RoundedCornerShape(16.dp)),
+        ) {
+            val legal = listOf(DocItem.Terms, DocItem.Privacy, DocItem.DataProcessing)
+            legal.forEachIndexed { index, doc ->
+                if (index > 0) {
+                    HorizontalDivider(color = colors.outlineVariant, modifier = Modifier.padding(horizontal = 16.dp))
+                }
+                Row(
+                    Modifier.fillMaxWidth().clickable { selected = doc }.padding(horizontal = 16.dp, vertical = 15.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(doc.title, fontSize = 15.sp, color = colors.onSurface, modifier = Modifier.weight(1f))
+                    Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = colors.outline)
+                }
+            }
+        }
+        Spacer(Modifier.weight(1f))
+        Text(
+            "Продолжая, вы принимаете Пользовательское соглашение и Политику конфиденциальности.",
+            fontSize = 12.5.sp,
+            color = colors.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            lineHeight = 18.sp,
+        )
+        Spacer(Modifier.height(14.dp))
+        Button(onClick = onAccept, modifier = Modifier.fillMaxWidth().height(52.dp)) {
+            Text("Принять и продолжить", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+        }
     }
 }

@@ -46,7 +46,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.Color
 import com.auskraft.purepdf.PurePdfApplication
+import com.auskraft.purepdf.ui.docs.ConsentScreen
 import com.auskraft.purepdf.ui.docs.DocsScreen
 import com.auskraft.purepdf.ui.rate.RateSheet
 
@@ -66,8 +68,19 @@ fun App(pendingUri: Uri?, onUriConsumed: () -> Unit) {
     val settingsVm: SettingsViewModel = viewModel(factory = AppViewModelProvider.Factory)
     val settings by settingsVm.settings.collectAsStateWithLifecycle()
 
-    PurePdfTheme(accent = settings.accent, darkTheme = settings.darkMode) {
-        AppContent(settings, settingsVm, pendingUri, onUriConsumed)
+    val current = settings
+    if (current == null) {
+        // Settings not loaded yet — hold the navy splash colour to avoid a flash.
+        Box(Modifier.fillMaxSize().background(Color(0xFF293244)))
+        return
+    }
+
+    PurePdfTheme(accent = current.accent, darkTheme = current.darkMode) {
+        if (!current.consentAccepted) {
+            ConsentScreen(onAccept = { settingsVm.setConsentAccepted(true) })
+        } else {
+            AppContent(current, settingsVm, pendingUri, onUriConsumed)
+        }
     }
 }
 
@@ -204,7 +217,11 @@ private fun AppContent(
             RateSheet(
                 onPick = { stars ->
                     scope.launch { rating.markDone() }
-                    if (stars >= 4) rating.openStore() else rating.openFeedbackEmail()
+                    when {
+                        stars >= 4 && rating.hasStore -> rating.openStore()
+                        stars >= 4 -> showSnackbar("Спасибо за оценку!")
+                        else -> rating.openFeedbackEmail()
+                    }
                     showRate = false
                 },
                 onDismiss = { showRate = false },

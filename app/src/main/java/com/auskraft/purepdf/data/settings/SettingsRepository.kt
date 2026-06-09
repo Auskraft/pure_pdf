@@ -19,6 +19,7 @@ data class AppSettings(
     val accent: AccentPreset = AccentPreset.Blue,
     val libraryView: LibraryView = LibraryView.List,
     val density: Density = Density.Regular,
+    val consentAccepted: Boolean = false,
 )
 
 class SettingsRepository(private val context: Context) {
@@ -29,6 +30,7 @@ class SettingsRepository(private val context: Context) {
         val ACCENT = stringPreferencesKey("accent")
         val VIEW = stringPreferencesKey("library_view")
         val DENSITY = stringPreferencesKey("density")
+        val CONSENT = booleanPreferencesKey("consent_accepted")
     }
 
     val settings: Flow<AppSettings> = context.settingsDataStore.data.map { p ->
@@ -38,6 +40,7 @@ class SettingsRepository(private val context: Context) {
             accent = p[Keys.ACCENT]?.let { runCatching { AccentPreset.valueOf(it) }.getOrNull() } ?: AccentPreset.Blue,
             libraryView = p[Keys.VIEW]?.let { runCatching { LibraryView.valueOf(it) }.getOrNull() } ?: LibraryView.List,
             density = p[Keys.DENSITY]?.let { runCatching { Density.valueOf(it) }.getOrNull() } ?: Density.Regular,
+            consentAccepted = p[Keys.CONSENT] ?: false,
         )
     }
 
@@ -46,4 +49,5 @@ class SettingsRepository(private val context: Context) {
     suspend fun setAccent(value: AccentPreset) = context.settingsDataStore.edit { it[Keys.ACCENT] = value.name }
     suspend fun setLibraryView(value: LibraryView) = context.settingsDataStore.edit { it[Keys.VIEW] = value.name }
     suspend fun setDensity(value: Density) = context.settingsDataStore.edit { it[Keys.DENSITY] = value.name }
+    suspend fun setConsentAccepted(value: Boolean) = context.settingsDataStore.edit { it[Keys.CONSENT] = value }
 }

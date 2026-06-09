@@ -16,8 +16,8 @@ private val Context.ratingDataStore: DataStore<Preferences> by preferencesDataSt
 /**
  * Tracks launch count and whether the user has rated, and opens the store / feedback email.
  *
- * PLACEHOLDER: the app isn't published yet — [STORE_URL] points at a not-yet-live Play listing
- * and [FEEDBACK_EMAIL] is a placeholder. Replace both before release.
+ * The app isn't published yet, so [STORE_URL] is empty and [hasStore] is false — high ratings
+ * just thank the user. Set [STORE_URL] to the listing once published.
  */
 class RatingManager(private val context: Context) {
 
@@ -44,13 +44,13 @@ class RatingManager(private val context: Context) {
 
     suspend fun markDone() = context.ratingDataStore.edit { it[Keys.DONE] = true }.let { }
 
-    /** 4–5 stars → open the store listing (market:// with a web fallback). */
+    val hasStore: Boolean get() = STORE_URL.isNotBlank()
+
+    /** 4–5 stars → open the store listing (once a [STORE_URL] is set). */
     fun openStore() {
-        val market = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=${context.packageName}"))
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        val web = Intent(Intent.ACTION_VIEW, Uri.parse(STORE_URL))
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        runCatching { context.startActivity(market) }.recoverCatching { context.startActivity(web) }
+        if (STORE_URL.isBlank()) return
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(STORE_URL)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        runCatching { context.startActivity(intent) }
     }
 
     /** 1–3 stars → open a feedback email rather than sending an unhappy user to the store. */
@@ -64,8 +64,8 @@ class RatingManager(private val context: Context) {
 
     companion object {
         const val PROMPT_AFTER_LAUNCHES = 3
-        // TODO: replace with the real store listing + support address once published.
-        const val STORE_URL = "https://play.google.com/store/apps/details?id=com.auskraft.purepdf"
+        /** Set to the store listing URL once the app is published. */
+        const val STORE_URL = ""
         const val FEEDBACK_EMAIL = "auskraft@gmail.com"
     }
 }
