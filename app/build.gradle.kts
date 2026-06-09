@@ -64,4 +64,5 @@ dependencies {
 
     implementation(libs.pdfiumandroid)
     implementation(libs.materialkolor)
+    implementation(libs.haze)
 }

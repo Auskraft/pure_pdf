@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -125,7 +126,7 @@ fun LibraryScreen(
             text = { Text("Открыть файл", fontWeight = FontWeight.Medium) },
             containerColor = colors.primaryContainer,
             contentColor = colors.onPrimaryContainer,
-            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 20.dp, bottom = 20.dp),
+            modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(end = 20.dp, bottom = 88.dp),
         )
     }
 }
@@ -156,7 +157,7 @@ private fun RecentList(
 ) {
     LazyColumn(
         Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 8.dp, end = 8.dp, bottom = 100.dp),
+        contentPadding = PaddingValues(start = 8.dp, end = 8.dp, bottom = 124.dp),
     ) {
         items(recents, key = { it.docKey }) { doc ->
             val preview = rememberPreview(doc, loadPreview, onPageCount)
@@ -208,7 +209,7 @@ private fun RecentGrid(
     val colors = MaterialTheme.colorScheme
     LazyVerticalGrid(
         columns = GridCells.Fixed(2),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 100.dp, top = 4.dp),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 124.dp, top = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(14.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {

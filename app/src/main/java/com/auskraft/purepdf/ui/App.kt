@@ -5,25 +5,29 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ChromeReaderMode
 import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -32,25 +36,34 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.auskraft.purepdf.PurePdfApplication
 import com.auskraft.purepdf.data.settings.AppSettings
 import com.auskraft.purepdf.data.settings.LibraryView
+import com.auskraft.purepdf.ui.docs.ConsentScreen
+import com.auskraft.purepdf.ui.docs.DocsScreen
 import com.auskraft.purepdf.ui.library.LibraryScreen
 import com.auskraft.purepdf.ui.library.LibraryViewModel
+import com.auskraft.purepdf.ui.rate.RateSheet
 import com.auskraft.purepdf.ui.reader.ReaderScreen
 import com.auskraft.purepdf.ui.settings.SettingsScreen
 import com.auskraft.purepdf.ui.theme.PurePdfTheme
+import androidx.compose.ui.platform.LocalContext
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.haze
+import dev.chrisbanes.haze.hazeChild
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.graphics.Color
-import com.auskraft.purepdf.PurePdfApplication
-import com.auskraft.purepdf.ui.docs.ConsentScreen
-import com.auskraft.purepdf.ui.docs.DocsScreen
-import com.auskraft.purepdf.ui.rate.RateSheet
 
 enum class AppTab { Library, Settings }
 
@@ -95,6 +108,7 @@ private fun AppContent(
     val recents by libraryVm.recentDocs.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
+    val hazeState = remember { HazeState() }
     var tab by rememberSaveable { mutableStateOf(AppTab.Library) }
     var openDoc by remember { mutableStateOf<OpenDoc?>(null) }
     var showDocs by remember { mutableStateOf(false) }
@@ -131,14 +145,13 @@ private fun AppContent(
         ActivityResultContracts.OpenDocument(),
     ) { uri -> uri?.let(::openUri) }
 
-    androidx.compose.runtime.LaunchedEffect(pendingUri) {
+    LaunchedEffect(pendingUri) {
         if (pendingUri != null) {
             openUri(pendingUri)
             onUriConsumed()
         }
     }
 
-    // Ask for a rating once, after a few launches.
     LaunchedEffect(Unit) {
         if (rating.shouldAutoPrompt()) {
             delay(1500)
@@ -162,8 +175,9 @@ private fun AppContent(
                 showSnackbar = ::showSnackbar,
             )
         } else {
-            Column(Modifier.fillMaxSize()) {
-                Box(Modifier.weight(1f)) {
+            Box(Modifier.fillMaxSize()) {
+                // Tab content is the haze source: the floating nav blurs whatever scrolls behind it.
+                Box(Modifier.fillMaxSize().haze(hazeState)) {
                     when (tab) {
                         AppTab.Library -> LibraryScreen(
                             recents = recents,
@@ -192,7 +206,12 @@ private fun AppContent(
                         )
                     }
                 }
-                BottomNav(tab) { tab = it }
+                FloatingNav(
+                    tab = tab,
+                    hazeState = hazeState,
+                    onTab = { tab = it },
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                )
             }
         }
 
@@ -232,24 +251,55 @@ private fun AppContent(
     }
 }
 
+/** Floating frosted-glass pill nav: centred (icons close together), translucent, blurred backdrop. */
 @Composable
-private fun BottomNav(tab: AppTab, onTab: (AppTab) -> Unit) {
+private fun FloatingNav(
+    tab: AppTab,
+    hazeState: HazeState,
+    onTab: (AppTab) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val colors = MaterialTheme.colorScheme
-    Column {
-        HorizontalDivider(color = colors.outlineVariant)
-        NavigationBar(containerColor = colors.surfaceContainer) {
-            NavigationBarItem(
-                selected = tab == AppTab.Library,
-                onClick = { onTab(AppTab.Library) },
-                icon = { Icon(Icons.Outlined.ChromeReaderMode, contentDescription = null) },
-                label = { Text("Библиотека") },
-            )
-            NavigationBarItem(
-                selected = tab == AppTab.Settings,
-                onClick = { onTab(AppTab.Settings) },
-                icon = { Icon(Icons.Outlined.Settings, contentDescription = null) },
-                label = { Text("Настройки") },
-            )
+    val shape = RoundedCornerShape(30.dp)
+    val style = HazeStyle(
+        backgroundColor = colors.surface,
+        tint = HazeTint(colors.surface.copy(alpha = 0.30f)),
+        blurRadius = 20.dp,
+    )
+    Box(modifier.navigationBarsPadding().padding(bottom = 10.dp)) {
+        Row(
+            Modifier
+                .shadow(10.dp, shape, clip = false)
+                .clip(shape)
+                .hazeChild(hazeState, shape = shape, style = style)
+                .border(1.dp, colors.outlineVariant.copy(alpha = 0.5f), shape)
+                .padding(horizontal = 6.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            NavPillItem(Icons.Outlined.ChromeReaderMode, "Библиотека", tab == AppTab.Library) { onTab(AppTab.Library) }
+            NavPillItem(Icons.Outlined.Settings, "Настройки", tab == AppTab.Settings) { onTab(AppTab.Settings) }
         }
+    }
+}
+
+@Composable
+private fun NavPillItem(icon: ImageVector, label: String, selected: Boolean, onClick: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    val color = if (selected) colors.primary else colors.onSurfaceVariant
+    Column(
+        Modifier
+            .clip(RoundedCornerShape(20.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(icon, contentDescription = label, tint = color, modifier = Modifier.size(24.dp))
+        Spacer(Modifier.height(2.dp))
+        Text(
+            label,
+            fontSize = 11.sp,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+            color = color,
+        )
     }
 }
