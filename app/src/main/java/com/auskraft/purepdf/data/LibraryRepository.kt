@@ -56,6 +56,10 @@ class LibraryRepository(
     suspend fun savePosition(key: String, page: Int, zoom: Float) =
         recentDao.updatePosition(key, page, zoom)
 
+    suspend fun savePageCount(key: String, count: Int) {
+        if (count > 0) recentDao.updatePageCount(key, count)
+    }
+
     suspend fun removeDoc(key: String) = recentDao.deleteByKey(key)
 
     fun bookmarks(key: String): Flow<List<BookmarkEntity>> = bookmarkDao.observeForDoc(key)

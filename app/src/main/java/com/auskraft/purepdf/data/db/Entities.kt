@@ -13,6 +13,8 @@ data class RecentDocEntity(
     val lastOpened: Long,
     val lastPage: Int = 1,
     val zoom: Float = 1f,
+    /** Total pages; 0 until known (filled when the doc is opened or its preview renders). */
+    val pageCount: Int = 0,
     /** True if we hold a persistable URI grant (so it can be reopened after restart). */
     val persistable: Boolean = true,
 )

@@ -11,7 +11,10 @@ import com.auskraft.purepdf.ui.library.LibraryViewModel
 object AppViewModelProvider {
     val Factory = viewModelFactory {
         initializer { SettingsViewModel(purePdfApplication().container.settingsRepository) }
-        initializer { LibraryViewModel(purePdfApplication().container.libraryRepository) }
+        initializer {
+            val app = purePdfApplication()
+            LibraryViewModel(app.container.libraryRepository, app.container.thumbnailCache, app)
+        }
     }
 }
 

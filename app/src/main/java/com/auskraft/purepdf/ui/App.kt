@@ -176,6 +176,8 @@ private fun AppContent(
                             },
                             onOpenDoc = { openUri(Uri.parse(it.uri)) },
                             onOpenFile = { openFileLauncher.launch(arrayOf("application/pdf")) },
+                            loadPreview = { uriStr, key, w -> libraryVm.preview(Uri.parse(uriStr), key, w) },
+                            onPageCount = libraryVm::setPageCount,
                         )
 
                         AppTab.Settings -> SettingsScreen(

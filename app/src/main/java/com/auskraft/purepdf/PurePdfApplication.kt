@@ -6,6 +6,7 @@ import com.auskraft.purepdf.data.LibraryRepository
 import com.auskraft.purepdf.data.RatingManager
 import com.auskraft.purepdf.data.db.AppDatabase
 import com.auskraft.purepdf.data.settings.SettingsRepository
+import com.auskraft.purepdf.pdf.PdfThumbnailCache
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -21,6 +22,7 @@ class AppContainer(context: Context) {
         database.bookmarkDao(),
     )
     val ratingManager = RatingManager(context.applicationContext)
+    val thumbnailCache = PdfThumbnailCache()
 }
 
 class PurePdfApplication : Application() {

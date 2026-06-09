@@ -1,5 +1,7 @@
 package com.auskraft.purepdf.ui.library
 
+import android.graphics.Bitmap
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -33,11 +35,15 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -46,10 +52,13 @@ import androidx.compose.ui.unit.sp
 import com.auskraft.purepdf.data.db.RecentDocEntity
 import com.auskraft.purepdf.data.settings.Density
 import com.auskraft.purepdf.data.settings.LibraryView
+import com.auskraft.purepdf.pdf.DocPreview
 import com.auskraft.purepdf.ui.theme.LocalPaperColors
 import com.auskraft.purepdf.ui.util.formatFileSize
 import com.auskraft.purepdf.ui.util.formatOpenedDate
 import kotlin.math.absoluteValue
+
+private const val THUMB_PX = 256
 
 @Composable
 fun LibraryScreen(
@@ -59,12 +68,13 @@ fun LibraryScreen(
     onToggleView: () -> Unit,
     onOpenDoc: (RecentDocEntity) -> Unit,
     onOpenFile: () -> Unit,
+    loadPreview: suspend (uri: String, docKey: String, widthPx: Int) -> DocPreview,
+    onPageCount: (docKey: String, count: Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = MaterialTheme.colorScheme
     Box(modifier.fillMaxSize().background(colors.surface)) {
         Column(Modifier.fillMaxSize()) {
-            // Large top app bar
             Row(
                 Modifier.statusBarsPadding().fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 14.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -100,14 +110,11 @@ fun LibraryScreen(
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Medium,
                     color = colors.onSurfaceVariant,
-                    modifier = Modifier.padding(
-                        start = if (view == LibraryView.Grid) 16.dp else 16.dp,
-                        end = 16.dp, top = 6.dp, bottom = 6.dp,
-                    ),
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
                 )
                 when (view) {
-                    LibraryView.List -> RecentList(recents, density, onOpenDoc)
-                    LibraryView.Grid -> RecentGrid(recents, onOpenDoc)
+                    LibraryView.List -> RecentList(recents, density, onOpenDoc, loadPreview, onPageCount)
+                    LibraryView.Grid -> RecentGrid(recents, onOpenDoc, loadPreview, onPageCount)
                 }
             }
         }
@@ -124,16 +131,35 @@ fun LibraryScreen(
 }
 
 @Composable
+private fun rememberPreview(
+    doc: RecentDocEntity,
+    loadPreview: suspend (String, String, Int) -> DocPreview,
+    onPageCount: (String, Int) -> Unit,
+): DocPreview? {
+    val preview by produceState<DocPreview?>(initialValue = null, key1 = doc.docKey) {
+        val result = loadPreview(doc.uri, doc.docKey, THUMB_PX)
+        value = result
+        if (result.pageCount > 0 && result.pageCount != doc.pageCount) {
+            onPageCount(doc.docKey, result.pageCount)
+        }
+    }
+    return preview
+}
+
+@Composable
 private fun RecentList(
     recents: List<RecentDocEntity>,
     density: Density,
     onOpenDoc: (RecentDocEntity) -> Unit,
+    loadPreview: suspend (String, String, Int) -> DocPreview,
+    onPageCount: (String, Int) -> Unit,
 ) {
     LazyColumn(
         Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 8.dp, end = 8.dp, bottom = 100.dp),
     ) {
         items(recents, key = { it.docKey }) { doc ->
+            val preview = rememberPreview(doc, loadPreview, onPageCount)
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -142,7 +168,7 @@ private fun RecentList(
                     .padding(horizontal = 8.dp, vertical = density.rowPaddingDp.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                DocThumb(color = thumbColorFor(doc.docKey), size = density.thumbDp.dp)
+                DocThumb(preview?.bitmap, thumbColorFor(doc.docKey), size = density.thumbDp.dp)
                 Spacer(Modifier.width(16.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
@@ -176,6 +202,8 @@ private fun RecentList(
 private fun RecentGrid(
     recents: List<RecentDocEntity>,
     onOpenDoc: (RecentDocEntity) -> Unit,
+    loadPreview: suspend (String, String, Int) -> DocPreview,
+    onPageCount: (String, Int) -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
     LazyVerticalGrid(
@@ -185,6 +213,7 @@ private fun RecentGrid(
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         items(recents, key = { it.docKey }) { doc ->
+            val preview = rememberPreview(doc, loadPreview, onPageCount)
             Column(
                 Modifier
                     .clip(RoundedCornerShape(16.dp))
@@ -194,7 +223,7 @@ private fun RecentGrid(
                     .padding(14.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                DocThumb(color = thumbColorFor(doc.docKey), size = 86.dp, corner = 6.dp)
+                DocThumb(preview?.bitmap, thumbColorFor(doc.docKey), size = 86.dp, corner = 6.dp)
                 Spacer(Modifier.height(10.dp))
                 Text(
                     doc.name,
@@ -207,7 +236,10 @@ private fun RecentGrid(
                 )
                 Spacer(Modifier.height(3.dp))
                 Text(
-                    formatOpenedDate(doc.lastOpened),
+                    listOfNotNull(
+                        if (doc.pageCount > 0) "${doc.pageCount} стр." else null,
+                        formatOpenedDate(doc.lastOpened),
+                    ).joinToString(" · "),
                     fontSize = 12.sp,
                     color = colors.onSurfaceVariant,
                     modifier = Modifier.fillMaxWidth(),
@@ -221,7 +253,7 @@ private fun RecentGrid(
 private fun EmptyLibrary(modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
     Column(
-        modifier.fillMaxSize().padding(horizontal = 40.dp, vertical = 0.dp),
+        modifier.fillMaxSize().padding(horizontal = 40.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
@@ -229,12 +261,7 @@ private fun EmptyLibrary(modifier: Modifier = Modifier) {
             Modifier.size(96.dp).clip(RoundedCornerShape(48.dp)).background(colors.secondaryContainer),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(
-                Icons.Rounded.Description,
-                contentDescription = null,
-                tint = colors.onSecondaryContainer,
-                modifier = Modifier.size(42.dp),
-            )
+            Icon(Icons.Rounded.Description, null, tint = colors.onSecondaryContainer, modifier = Modifier.size(42.dp))
         }
         Spacer(Modifier.height(22.dp))
         Text("Здесь пока пусто", fontSize = 19.sp, fontWeight = FontWeight.Medium, color = colors.onSurface)
@@ -249,11 +276,11 @@ private fun EmptyLibrary(modifier: Modifier = Modifier) {
     }
 }
 
-private fun subtitleOf(doc: RecentDocEntity): String {
-    val size = formatFileSize(doc.sizeBytes)
-    val date = formatOpenedDate(doc.lastOpened)
-    return listOf(size, date).filter { it.isNotEmpty() }.joinToString(" · ")
-}
+private fun subtitleOf(doc: RecentDocEntity): String = listOfNotNull(
+    formatFileSize(doc.sizeBytes).takeIf { it.isNotEmpty() },
+    if (doc.pageCount > 0) "${doc.pageCount} стр." else null,
+    formatOpenedDate(doc.lastOpened).takeIf { it.isNotEmpty() },
+).joinToString(" · ")
 
 // ── Thumbnail ────────────────────────────────────────────────────────────────
 
@@ -264,30 +291,46 @@ private val ThumbPalette = listOf(
 private fun thumbColorFor(key: String): Color =
     ThumbPalette[(key.hashCode().absoluteValue) % ThumbPalette.size]
 
-/** Stylised "page" placeholder: colored title bar + grey text lines, matching the design. */
+/**
+ * Document thumbnail: the rendered first page when available, otherwise a stylised "page"
+ * placeholder (colored title bar + grey lines).
+ */
 @Composable
-fun DocThumb(color: Color, size: Dp, corner: Dp = 8.dp, modifier: Modifier = Modifier) {
+fun DocThumb(bitmap: Bitmap?, fallbackColor: Color, size: Dp, corner: Dp = 8.dp, modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
-    Column(
+    Box(
         modifier
             .size(width = size, height = size * 1.3f)
             .shadow(2.dp, RoundedCornerShape(corner))
             .clip(RoundedCornerShape(corner))
             .background(LocalPaperColors.current.paper)
-            .border(1.dp, colors.outlineVariant, RoundedCornerShape(corner))
-            .padding(size * 0.14f),
-        verticalArrangement = Arrangement.spacedBy(size * 0.07f),
+            .border(1.dp, colors.outlineVariant, RoundedCornerShape(corner)),
     ) {
-        Box(
-            Modifier.fillMaxWidth(0.62f).height(size * 0.14f)
-                .clip(RoundedCornerShape(2.dp)).background(color.copy(alpha = 0.85f)),
-        )
-        listOf(0.88f, 1f, 0.94f, 0.70f).forEach { frac ->
-            Box(
-                Modifier.fillMaxWidth(frac).height(size * 0.07f)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(colors.onSurfaceVariant.copy(alpha = 0.28f)),
+        if (bitmap != null) {
+            Image(
+                bitmap = bitmap.asImageBitmap(),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+                alignment = Alignment.TopCenter,
             )
+        } else {
+            Column(
+                Modifier.fillMaxSize().padding(size * 0.14f),
+                verticalArrangement = Arrangement.spacedBy(size * 0.07f),
+            ) {
+                Box(
+                    Modifier.fillMaxWidth(0.62f).height(size * 0.14f)
+                        .clip(RoundedCornerShape(2.dp)).background(fallbackColor.copy(alpha = 0.85f)),
+                )
+                listOf(0.88f, 1f, 0.94f, 0.70f).forEach { frac ->
+                    Box(
+                        Modifier.fillMaxWidth(frac).height(size * 0.07f)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(colors.onSurfaceVariant.copy(alpha = 0.28f)),
+                    )
+                }
+            }
         }
     }
 }

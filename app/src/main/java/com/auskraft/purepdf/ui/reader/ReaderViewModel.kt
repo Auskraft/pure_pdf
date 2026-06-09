@@ -59,12 +59,19 @@ class ReaderViewModel(
 
     init {
         viewModelScope.launch {
-            loadState = runCatching {
-                val opened = PdfDocumentController.open(getApplication(), uri)
-                controller = opened
-                searchEngine = PdfSearchEngine(opened)
-                ReaderLoad.Ready(opened.pageCount)
-            }.getOrElse { ReaderLoad.Failed(it.message ?: "Не удалось открыть документ") }
+            val opened = runCatching {
+                PdfDocumentController.open(getApplication(), uri).also {
+                    controller = it
+                    searchEngine = PdfSearchEngine(it)
+                }
+            }
+            loadState = opened.fold(
+                onSuccess = {
+                    libraryRepository.savePageCount(docKey, it.pageCount)
+                    ReaderLoad.Ready(it.pageCount)
+                },
+                onFailure = { ReaderLoad.Failed(it.message ?: "Не удалось открыть документ") },
+            )
         }
     }
 

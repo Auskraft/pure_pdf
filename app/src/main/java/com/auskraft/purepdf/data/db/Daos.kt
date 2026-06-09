@@ -19,6 +19,9 @@ interface RecentDocDao {
     @Query("UPDATE recent_docs SET lastPage = :page, zoom = :zoom WHERE docKey = :key")
     suspend fun updatePosition(key: String, page: Int, zoom: Float)
 
+    @Query("UPDATE recent_docs SET pageCount = :count WHERE docKey = :key")
+    suspend fun updatePageCount(key: String, count: Int)
+
     @Query("DELETE FROM recent_docs WHERE docKey = :key")
     suspend fun deleteByKey(key: String)
 }
