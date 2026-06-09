@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dark navy from the app icon / splash artwork -->
+    <!-- Exact navy from the icon corners, so splash + icon foreground/background blend. -->
+    <color name="splash_background">#FF293244</color>
+    <color name="ic_launcher_background">#FF293244</color>
+</resources>

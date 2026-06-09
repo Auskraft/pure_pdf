@@ -1,4 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.PurePdf" parent="Theme.Material3.DayNight.NoActionBar" />
+
+    <!-- Launch (splash) theme. Applied to MainActivity; hands off to Theme.PurePdf
+         once the app is ready. Icon is added in res/drawable + mipmap. -->
+    <style name="Theme.PurePdf.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/splash_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/splash_logo</item>
+        <item name="postSplashScreenTheme">@style/Theme.PurePdf</item>
+    </style>
+
+    <!-- Main app theme. The app is fully Compose, so this only sets the window
+         background and lets Compose draw edge-to-edge. -->
+    <style name="Theme.PurePdf" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/splash_background</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+    </style>
+
 </resources>
