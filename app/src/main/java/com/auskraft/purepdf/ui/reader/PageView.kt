@@ -95,7 +95,6 @@ fun PageView(
 
     val displayWidthPx = viewportWidthPx * zoom
     val displayHeightPx = displayWidthPx * aspect
-    val baseOffsetX = (viewportWidthPx - displayWidthPx) / 2f
 
     Box(
         Modifier
@@ -107,9 +106,11 @@ fun PageView(
             Modifier
                 // requiredWidth so the zoomed page can exceed the viewport (clip window) width —
                 // a plain .width() would be clamped to the parent, leaving the page un-magnified.
+                // An oversized child is auto-centred by the layout, which already contributes the
+                // (viewport - display) / 2 base offset — add only the user pan on top of it.
                 .requiredWidth(with(density) { displayWidthPx.toDp() })
                 .height(with(density) { displayHeightPx.toDp() })
-                .offset { IntOffset((baseOffsetX + panX).roundToInt(), 0) }
+                .offset { IntOffset(panX.roundToInt(), 0) }
                 .shadow(2.dp, RoundedCornerShape(4.dp))
                 .clip(RoundedCornerShape(4.dp))
                 .background(paper.paper),

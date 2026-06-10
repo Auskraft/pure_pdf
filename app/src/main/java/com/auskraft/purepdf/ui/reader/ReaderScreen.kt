@@ -2,28 +2,34 @@ package com.auskraft.purepdf.ui.reader
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -34,6 +40,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.ZoomIn
+import androidx.compose.material.icons.rounded.ZoomOut
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -47,7 +55,10 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -60,6 +71,11 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.auskraft.purepdf.ui.OpenDoc
 import com.auskraft.purepdf.ui.purePdfApplication
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.haze
+import dev.chrisbanes.haze.hazeChild
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
@@ -69,6 +85,13 @@ import kotlin.math.roundToInt
 private const val MAX_ZOOM = 3f
 private const val DOUBLE_TAP_ZOOM = 1.75f
 private const val MAX_RENDER_SCALE = 2.5f
+private const val BUTTON_ZOOM_STEP = 0.5f
+
+/**
+ * How the current zoom was applied. Gesture zoom keeps the existing navigation (two-finger pan)
+ * and hides the zoom buttons; button zoom disables pinch and pans photo-style with one finger.
+ */
+private enum class ZoomMode { None, Gesture, Buttons }
 
 private fun readerViewModelFactory(open: OpenDoc, keepPosition: Boolean): ViewModelProvider.Factory =
     viewModelFactory {
@@ -159,6 +182,8 @@ private fun ReaderContent(
     var zoom by remember { mutableFloatStateOf(open.initialZoom.coerceIn(1f, MAX_ZOOM)) }
     var panX by remember { mutableFloatStateOf(0f) }
     var renderScale by remember { mutableFloatStateOf(zoom.coerceIn(1f, MAX_RENDER_SCALE)) }
+    var zoomMode by remember { mutableStateOf(ZoomMode.None) }
+    val readerHaze = remember { HazeState() }
 
     val currentPage by remember {
         derivedStateOf {
@@ -197,13 +222,6 @@ private fun ReaderContent(
         if (searchOpen) vm.activeResult?.let { goToPage(it.page + 1) }
     }
 
-    fun toggleZoom() {
-        val zoomedIn = zoom > 1.01f
-        zoom = if (zoomedIn) 1f else DOUBLE_TAP_ZOOM
-        panX = 0f
-        showSnackbar(if (zoomedIn) "Масштаб 100%" else "Масштаб ${(DOUBLE_TAP_ZOOM * 100).roundToInt()}%")
-    }
-
     // Gesture/system back: close search first, otherwise leave the reader.
     BackHandler {
         if (searchOpen) {
@@ -221,34 +239,119 @@ private fun ReaderContent(
         val topInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
         val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
+        // Set zoom keeping the viewport centre anchored (used by double-tap and the buttons).
+        fun setZoomCentered(target: Float, mode: ZoomMode) {
+            val t = target.coerceIn(1f, MAX_ZOOM)
+            val k = t / zoom
+            if (k != 1f) {
+                val info = listState.layoutInfo
+                val centerY = (info.viewportStartOffset + info.viewportEndOffset) / 2f
+                val firstTop = info.visibleItemsInfo.firstOrNull()?.offset ?: 0
+                listState.dispatchRawDelta((centerY - firstTop) * (k - 1f))
+            }
+            val extra = viewportWidthPx * (t - 1f) / 2f
+            panX = if (t <= 1.01f) 0f else (panX * k).coerceIn(-extra, extra)
+            zoom = t
+            zoomMode = if (t > 1.01f) mode else ZoomMode.None
+        }
+
+        fun toggleZoom() {
+            val zoomedIn = zoom > 1.01f
+            setZoomCentered(if (zoomedIn) 1f else DOUBLE_TAP_ZOOM, ZoomMode.Gesture)
+            showSnackbar(if (zoomedIn) "Масштаб 100%" else "Масштаб ${(DOUBLE_TAP_ZOOM * 100).roundToInt()}%")
+        }
+
+        fun buttonZoom(delta: Float) {
+            val target = (zoom + delta).coerceIn(1f, MAX_ZOOM)
+            if (target == zoom) return
+            // No snackbar here: it would overlap (and steal taps from) the zoom buttons,
+            // and the zoom change itself is the feedback.
+            setZoomCentered(target, ZoomMode.Buttons)
+        }
+
         LazyColumn(
             state = listState,
             modifier = Modifier
                 .fillMaxSize()
+                .haze(readerHaze)
                 .pointerInput(Unit) {
                     detectTapGestures(
                         onTap = { chromeVisible = !chromeVisible },
-                        onDoubleTap = { toggleZoom() },
+                        onDoubleTap = {
+                            if (zoomMode == ZoomMode.Buttons) {
+                                setZoomCentered(1f, ZoomMode.None)
+                                showSnackbar("Масштаб 100%")
+                            } else {
+                                toggleZoom()
+                            }
+                        },
                     )
                 }
                 .pointerInput(viewportWidthPx) {
+                    // Handled on the Initial pass so the list's own scrollable never fights the
+                    // pinch (the old handler let LazyColumn scroll under two fingers too, which
+                    // dragged the document towards a corner while zooming).
                     awaitEachGesture {
-                        awaitFirstDown(requireUnconsumed = false)
-                        do {
-                            val event = awaitPointerEvent()
-                            if (event.changes.count { it.pressed } >= 2) {
+                        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                        var dragStarted = false
+                        var prevPos = down.position
+                        var prevId = down.id
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                            val pressed = event.changes.filter { it.pressed }
+                            if (pressed.isEmpty()) break
+
+                            if (pressed.size >= 2 && zoomMode != ZoomMode.Buttons) {
+                                // ── Pinch: zoom anchored at the finger centroid ──
                                 val zoomChange = event.calculateZoom()
                                 val pan = event.calculatePan()
+                                val centroid = event.calculateCentroid()
                                 if (zoomChange != 1f || pan != Offset.Zero) {
-                                    val newZoom = (zoom * zoomChange).coerceIn(1f, MAX_ZOOM)
+                                    val oldZoom = zoom
+                                    val newZoom = (oldZoom * zoomChange).coerceIn(1f, MAX_ZOOM)
+                                    val k = newZoom / oldZoom
+                                    val v = viewportWidthPx.toFloat()
+                                    // Keep the content point under the centroid fixed horizontally…
+                                    val contentX = (centroid.x - v * (1f - oldZoom) / 2f - panX) / oldZoom
+                                    val targetPanX =
+                                        centroid.x - v * (1f - newZoom) / 2f - contentX * newZoom + pan.x
+                                    val extra = v * (newZoom - 1f) / 2f
+                                    panX = if (newZoom <= 1.01f) 0f else targetPanX.coerceIn(-extra, extra)
+                                    // …and vertically (the first visible item's top is the layout's
+                                    // stable anchor when item heights change).
+                                    val firstTop =
+                                        listState.layoutInfo.visibleItemsInfo.firstOrNull()?.offset ?: 0
+                                    listState.dispatchRawDelta((centroid.y - firstTop) * (k - 1f) - pan.y)
                                     zoom = newZoom
-                                    val extra = viewportWidthPx * (newZoom - 1f) / 2f
-                                    panX = if (newZoom <= 1.01f) 0f else (panX + pan.x).coerceIn(-extra, extra)
-                                    if (pan.y != 0f) scope.launch { listState.scrollBy(-pan.y) }
-                                    event.changes.forEach { it.consume() }
+                                    zoomMode = if (newZoom > 1.01f) ZoomMode.Gesture else ZoomMode.None
+                                }
+                                event.changes.forEach { it.consume() }
+                                dragStarted = false
+                            } else if (pressed.size == 1 && zoomMode == ZoomMode.Buttons && zoom > 1.01f) {
+                                // ── Button mode: one-finger pan in both axes, photo-style ──
+                                val change = pressed.first()
+                                if (change.id != prevId) {
+                                    prevId = change.id
+                                    prevPos = change.position
+                                }
+                                val pos = change.position
+                                if (!dragStarted) {
+                                    if ((pos - down.position).getDistance() > viewConfiguration.touchSlop) {
+                                        dragStarted = true
+                                        prevPos = pos
+                                        change.consume()
+                                    }
+                                } else {
+                                    val dx = pos.x - prevPos.x
+                                    val dy = pos.y - prevPos.y
+                                    prevPos = pos
+                                    val extra = viewportWidthPx * (zoom - 1f) / 2f
+                                    panX = (panX + dx).coerceIn(-extra, extra)
+                                    listState.dispatchRawDelta(-dy)
+                                    change.consume()
                                 }
                             }
-                        } while (event.changes.any { it.pressed })
+                        }
                     }
                 },
             contentPadding = PaddingValues(
@@ -347,6 +450,30 @@ private fun ReaderContent(
                 )
             }
         }
+
+        // ── Glass zoom buttons (hidden while gesture-zoomed) ──
+        val zoomButtonsBottom by animateDpAsState(
+            targetValue = if (chromeVisible && !searchOpen) 96.dp else 24.dp,
+            label = "zoomButtonsBottom",
+        )
+        AnimatedVisibility(
+            visible = zoomMode != ZoomMode.Gesture,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .navigationBarsPadding()
+                .padding(end = 14.dp)
+                .padding(bottom = zoomButtonsBottom),
+        ) {
+            ZoomButtons(
+                hazeState = readerHaze,
+                canZoomIn = zoom < MAX_ZOOM - 0.01f,
+                canZoomOut = zoom > 1.01f,
+                onZoomIn = { buttonZoom(BUTTON_ZOOM_STEP) },
+                onZoomOut = { buttonZoom(-BUTTON_ZOOM_STEP) },
+            )
+        }
     }
 
     if (showJump) {
@@ -370,6 +497,58 @@ private fun ReaderContent(
             onJump = { showBookmarks = false; goToPage(it) },
             onDelete = { vm.removeBookmark(it) },
             onDismiss = { showBookmarks = false },
+        )
+    }
+}
+
+/** Liquid-glass zoom-in / zoom-out buttons, styled like the floating nav pill. */
+@Composable
+private fun ZoomButtons(
+    hazeState: HazeState,
+    canZoomIn: Boolean,
+    canZoomOut: Boolean,
+    onZoomIn: () -> Unit,
+    onZoomOut: () -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(26.dp)
+    val style = HazeStyle(
+        backgroundColor = colors.surface,
+        tint = HazeTint(colors.surface.copy(alpha = 0.30f)),
+        blurRadius = 20.dp,
+    )
+    Column(
+        Modifier
+            .shadow(10.dp, shape, clip = false)
+            .clip(shape)
+            .hazeChild(hazeState, shape = shape, style = style)
+            .border(1.dp, colors.outlineVariant.copy(alpha = 0.5f), shape),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        GlassIconButton(Icons.Rounded.ZoomIn, "Увеличить", canZoomIn, onZoomIn)
+        Box(
+            Modifier
+                .width(26.dp)
+                .height(1.dp)
+                .background(colors.outlineVariant.copy(alpha = 0.5f)),
+        )
+        GlassIconButton(Icons.Rounded.ZoomOut, "Уменьшить", canZoomOut, onZoomOut)
+    }
+}
+
+@Composable
+private fun GlassIconButton(
+    icon: ImageVector,
+    contentDescription: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    IconButton(onClick = onClick, enabled = enabled) {
+        Icon(
+            icon,
+            contentDescription = contentDescription,
+            tint = colors.onSurface.copy(alpha = if (enabled) 1f else 0.35f),
         )
     }
 }
