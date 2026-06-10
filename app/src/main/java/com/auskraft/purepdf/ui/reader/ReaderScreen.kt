@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
@@ -77,6 +78,7 @@ import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.haze
 import dev.chrisbanes.haze.hazeChild
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
 import kotlin.math.ceil
@@ -216,6 +218,16 @@ private fun ReaderContent(
     // Restore-position hint.
     LaunchedEffect(Unit) {
         if (keepPosition && open.initialPage > 1) showSnackbar("Продолжаем со страницы ${open.initialPage}")
+    }
+    // Scroll indicator lingers briefly after scrolling stops.
+    var scrollBarLinger by remember { mutableStateOf(false) }
+    LaunchedEffect(listState.isScrollInProgress) {
+        if (listState.isScrollInProgress) {
+            scrollBarLinger = true
+        } else {
+            delay(1500)
+            scrollBarLinger = false
+        }
     }
     // Follow the active search result.
     LaunchedEffect(vm.activeResultIndex, vm.searchResults.size, searchOpen) {
@@ -474,6 +486,19 @@ private fun ReaderContent(
                 onZoomOut = { buttonZoom(-BUTTON_ZOOM_STEP) },
             )
         }
+
+        // ── Minimap-style scroll indicator (right edge) ──
+        ReaderScrollBar(
+            listState = listState,
+            pageCount = pageCount,
+            currentPage = currentPage,
+            visible = chromeVisible || scrollBarLinger,
+            hazeState = readerHaze,
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .fillMaxHeight()
+                .padding(top = topInset + 72.dp, bottom = bottomInset + 210.dp),
+        )
     }
 
     if (showJump) {
