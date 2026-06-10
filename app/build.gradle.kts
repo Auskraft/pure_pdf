@@ -1,8 +1,18 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
+}
+
+// Release signing is read from keystore.properties (gitignored). When it's absent the release
+// build falls back to the debug key, so a minified APK is still buildable/testable without secrets.
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = Properties().apply {
+    if (keystorePropertiesFile.exists()) load(FileInputStream(keystorePropertiesFile))
 }
 
 android {
@@ -17,13 +27,35 @@ android {
         versionName = "1.0"
     }
 
+    signingConfigs {
+        if (keystorePropertiesFile.exists()) {
+            create("release") {
+                storeFile = file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
+                "proguard-rules.pro",
             )
+            signingConfig = if (keystorePropertiesFile.exists()) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
+            // RuStore devices are arm in practice — drop the x86 emulator ABIs to roughly halve
+            // the universal APK. Debug keeps every ABI so emulators still work.
+            ndk {
+                abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+            }
         }
     }
 

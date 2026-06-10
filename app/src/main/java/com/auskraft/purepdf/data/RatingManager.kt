@@ -64,8 +64,8 @@ class RatingManager(private val context: Context) {
 
     companion object {
         const val PROMPT_AFTER_LAUNCHES = 3
-        /** Set to the store listing URL once the app is published. */
-        const val STORE_URL = ""
+        /** RuStore listing (live once the app is published under this package). */
+        const val STORE_URL = "https://www.rustore.ru/catalog/app/com.auskraft.purepdf"
         const val FEEDBACK_EMAIL = "auskraft@gmail.com"
     }
 }
