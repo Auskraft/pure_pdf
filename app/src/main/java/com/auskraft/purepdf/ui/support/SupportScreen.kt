@@ -13,6 +13,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -23,7 +24,6 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -173,13 +173,16 @@ fun SupportScreen(onBack: () -> Unit, onPayment: () -> Unit, onTerms: () -> Unit
             ) {
                 Text("QR для другого устройства", color = colors.onSurface, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
                 Spacer(Modifier.height(14.dp))
-                Image(
-                    bitmap = qr,
-                    contentDescription = "QR для страницы оплаты",
-                    filterQuality = FilterQuality.None,
-                    modifier = Modifier.widthIn(max = 216.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp))
-                        .background(Color.White).border(1.dp, GoldBorder, RoundedCornerShape(12.dp)).padding(10.dp),
-                )
+                BoxWithConstraints(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    val side = maxWidth.coerceAtMost(280.dp)
+                    Image(
+                        bitmap = qr,
+                        contentDescription = "QR для страницы оплаты",
+                        filterQuality = FilterQuality.None,
+                        modifier = Modifier.size(side).clip(RoundedCornerShape(12.dp))
+                            .background(Color.White).border(1.dp, GoldBorder, RoundedCornerShape(12.dp)).padding(10.dp),
+                    )
+                }
                 Spacer(Modifier.height(14.dp))
                 Text("Откройте страницу оплаты камерой", color = colors.onSurfaceVariant, fontSize = 13.sp, textAlign = TextAlign.Center)
             }
