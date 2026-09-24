@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import com.auskraft.purepdf.data.LibraryRepository
 import com.auskraft.purepdf.data.RatingManager
+import com.auskraft.purepdf.data.SupportManager
 import com.auskraft.purepdf.data.db.AppDatabase
 import com.auskraft.purepdf.data.settings.SettingsRepository
 import com.auskraft.purepdf.pdf.PdfThumbnailCache
@@ -22,6 +23,7 @@ class AppContainer(context: Context) {
         database.bookmarkDao(),
     )
     val ratingManager = RatingManager(context.applicationContext)
+    val supportManager = SupportManager(context.applicationContext)
     val thumbnailCache = PdfThumbnailCache()
 }
 

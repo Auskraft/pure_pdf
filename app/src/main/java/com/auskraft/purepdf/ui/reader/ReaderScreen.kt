@@ -44,6 +44,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.ZoomIn
 import androidx.compose.material.icons.rounded.ZoomOut
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -122,10 +123,14 @@ fun ReaderScreen(
     showSnackbar: (String) -> Unit,
 ) {
     val vm: ReaderViewModel = viewModel(
-        key = open.docKey,
-        factory = remember(open.docKey, keepPosition) { readerViewModelFactory(open, keepPosition) },
+        key = open.readerKey,
+        factory = remember(open.readerKey, keepPosition) { readerViewModelFactory(open, keepPosition) },
     )
     val colors = MaterialTheme.colorScheme
+
+    DisposableEffect(vm) {
+        onDispose { vm.closeDocument() }
+    }
 
     Box(Modifier.fillMaxSize().background(colors.surfaceDim)) {
         when (val state = vm.loadState) {

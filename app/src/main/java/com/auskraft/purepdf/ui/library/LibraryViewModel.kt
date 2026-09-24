@@ -28,6 +28,10 @@ class LibraryViewModel(
     /** Records the document as just-opened (taking a persistable grant) and returns its entry. */
     suspend fun open(uri: Uri): RecentDocEntity = repository.recordOpen(uri)
 
+    /** Reopens an existing recent while preserving its stable docKey/bookmarks/position. */
+    suspend fun reopen(doc: RecentDocEntity): RecentDocEntity =
+        repository.recordOpen(Uri.parse(doc.uri), doc.docKey)
+
     /** First-page thumbnail + page count for a recent document. */
     suspend fun preview(uri: Uri, docKey: String, widthPx: Int): DocPreview =
         thumbnailCache.preview(appContext, uri, docKey, widthPx)

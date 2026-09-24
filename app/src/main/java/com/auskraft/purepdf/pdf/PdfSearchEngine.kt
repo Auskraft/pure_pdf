@@ -26,17 +26,23 @@ class PdfSearchEngine(private val controller: PdfDocumentController) {
         for (page in 0 until controller.pageCount) {
             coroutineContext.ensureActive() // cancel promptly when the query changes
             val text = controller.pageText(page)
-            if (text.isEmpty()) continue
-            var idx = text.indexOf(needle, 0, ignoreCase = true)
-            while (idx >= 0) {
-                results.add(SearchMatch(page, idx, needle.length))
-                idx = text.indexOf(needle, idx + needle.length, ignoreCase = true)
-            }
+            results.addAll(findMatchesOnPage(text, needle, page))
         }
         results
     }
 
     companion object {
         const val MIN_QUERY = 2
+
+        internal fun findMatchesOnPage(text: String, needle: String, page: Int): List<SearchMatch> {
+            if (text.isEmpty()) return emptyList()
+            val results = ArrayList<SearchMatch>()
+            var idx = text.indexOf(needle, 0, ignoreCase = true)
+            while (idx >= 0) {
+                results.add(SearchMatch(page, idx, needle.length))
+                idx = text.indexOf(needle, idx + needle.length, ignoreCase = true)
+            }
+            return results
+        }
     }
 }

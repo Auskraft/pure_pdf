@@ -36,4 +36,7 @@ interface BookmarkDao {
 
     @Query("DELETE FROM bookmarks WHERE docKey = :key AND page = :page")
     suspend fun delete(key: String, page: Int)
+
+    @Query("DELETE FROM bookmarks WHERE docKey = :key")
+    suspend fun deleteForDoc(key: String)
 }

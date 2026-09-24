@@ -28,6 +28,7 @@ import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Restore
 import androidx.compose.material.icons.rounded.StarRate
+import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.ViewAgenda
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -60,6 +61,7 @@ fun SettingsScreen(
     onView: (LibraryView) -> Unit,
     onDensity: (Density) -> Unit,
     onRate: () -> Unit,
+    onSupport: () -> Unit,
     onOpenDocs: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -142,6 +144,14 @@ fun SettingsScreen(
             // ── Приложение (rating + documentation) ──
             SectionLabel("Приложение")
             SettingsCard {
+                SettingRow(
+                    icon = Icons.Rounded.FavoriteBorder,
+                    title = "Поддержка разработчика",
+                    subtitle = "Помочь развитию Pure PDF",
+                    onClick = onSupport,
+                    trailing = { Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = colors.outline) },
+                )
+                InsetDivider()
                 SettingRow(
                     icon = Icons.Rounded.StarRate,
                     title = "Оценить приложение",

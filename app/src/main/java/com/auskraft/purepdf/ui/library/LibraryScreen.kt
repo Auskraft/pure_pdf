@@ -55,6 +55,7 @@ import com.auskraft.purepdf.data.settings.Density
 import com.auskraft.purepdf.data.settings.LibraryView
 import com.auskraft.purepdf.pdf.DocPreview
 import com.auskraft.purepdf.ui.theme.LocalPaperColors
+import com.auskraft.purepdf.ui.support.SupportHeartButton
 import com.auskraft.purepdf.ui.util.formatFileSize
 import com.auskraft.purepdf.ui.util.formatOpenedDate
 import kotlin.math.absoluteValue
@@ -67,6 +68,7 @@ fun LibraryScreen(
     view: LibraryView,
     density: Density,
     onToggleView: () -> Unit,
+    onSupport: () -> Unit,
     onOpenDoc: (RecentDocEntity) -> Unit,
     onOpenFile: () -> Unit,
     loadPreview: suspend (uri: String, docKey: String, widthPx: Int) -> DocPreview,
@@ -88,6 +90,7 @@ fun LibraryScreen(
                     color = colors.onSurface,
                     modifier = Modifier.weight(1f),
                 )
+                SupportHeartButton(onClick = onSupport)
                 if (recents.isNotEmpty()) {
                     val gridSelected = view == LibraryView.Grid
                     Box(

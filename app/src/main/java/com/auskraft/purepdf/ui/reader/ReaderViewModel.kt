@@ -14,11 +14,14 @@ import com.auskraft.purepdf.data.db.BookmarkEntity
 import com.auskraft.purepdf.pdf.PdfDocumentController
 import com.auskraft.purepdf.pdf.PdfSearchEngine
 import com.auskraft.purepdf.pdf.SearchMatch
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
+import kotlin.coroutines.coroutineContext
 
 sealed interface ReaderLoad {
     data object Loading : ReaderLoad
@@ -42,6 +45,7 @@ class ReaderViewModel(
 
     private var controller: PdfDocumentController? = null
     private var searchEngine: PdfSearchEngine? = null
+    private var openJob: Job? = null
 
     val bookmarks: StateFlow<List<BookmarkEntity>> =
         libraryRepository.bookmarks(docKey).stateIn(
@@ -58,31 +62,59 @@ class ReaderViewModel(
     private var searchJob: Job? = null
 
     init {
-        viewModelScope.launch {
-            val opened = runCatching {
-                PdfDocumentController.open(getApplication(), uri).also {
-                    controller = it
-                    searchEngine = PdfSearchEngine(it)
-                }
+        openJob = viewModelScope.launch {
+            var opened: PdfDocumentController? = null
+            try {
+                opened = PdfDocumentController.open(getApplication(), uri)
+                coroutineContext.ensureActive()
+                controller = opened
+                searchEngine = PdfSearchEngine(opened)
+                val count = opened.pageCount
+                runCatching { libraryRepository.savePageCount(docKey, count) }
+                loadState = ReaderLoad.Ready(count)
+                opened = null
+            } catch (error: CancellationException) {
+                opened?.close()
+                throw error
+            } catch (error: Throwable) {
+                opened?.close()
+                loadState = ReaderLoad.Failed("Файл недоступен. Откройте его заново через «Открыть файл» или «Поделиться».")
             }
-            loadState = opened.fold(
-                onSuccess = {
-                    libraryRepository.savePageCount(docKey, it.pageCount)
-                    ReaderLoad.Ready(it.pageCount)
-                },
-                onFailure = { ReaderLoad.Failed(it.message ?: "Не удалось открыть документ") },
-            )
         }
     }
 
-    suspend fun renderPage(index: Int, widthPx: Int): Bitmap? =
-        controller?.renderPage(index, widthPx)
+    suspend fun renderPage(index: Int, widthPx: Int): Bitmap? {
+        val current = controller ?: return null
+        return try {
+            current.renderPage(index, widthPx)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            null
+        }
+    }
 
-    suspend fun pageAspectRatio(index: Int): Float =
-        controller?.pageSize(index)?.aspectRatio ?: DEFAULT_ASPECT
+    suspend fun pageAspectRatio(index: Int): Float {
+        val current = controller ?: return DEFAULT_ASPECT
+        return try {
+            current.pageSize(index).aspectRatio
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            DEFAULT_ASPECT
+        }
+    }
 
-    suspend fun highlightRects(index: Int, charStart: Int, charLen: Int, widthPx: Int): List<RectF> =
-        controller?.highlightRects(index, charStart, charLen, widthPx) ?: emptyList()
+    suspend fun highlightRects(index: Int, charStart: Int, charLen: Int, widthPx: Int): List<RectF> {
+        val current = controller ?: return emptyList()
+        return try {
+            current.highlightRects(index, charStart, charLen, widthPx)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            emptyList()
+        }
+    }
 
     fun savePosition(page: Int, zoom: Float) {
         if (!keepPosition) return
@@ -145,9 +177,18 @@ class ReaderViewModel(
     val activeResult: SearchMatch?
         get() = searchResults.getOrNull(activeResultIndex)
 
-    override fun onCleared() {
+    fun closeDocument() {
+        openJob?.cancel()
+        openJob = null
+        searchJob?.cancel()
+        searchJob = null
+        searchEngine = null
         controller?.close()
         controller = null
+    }
+
+    override fun onCleared() {
+        closeDocument()
         super.onCleared()
     }
 

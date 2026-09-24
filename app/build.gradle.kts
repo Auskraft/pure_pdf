@@ -23,8 +23,8 @@ android {
         applicationId = "com.auskraft.purepdf"
         minSdk = 29
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 183
+        versionName = "1.8.3"
     }
 
     signingConfigs {
@@ -97,4 +97,6 @@ dependencies {
     implementation(libs.pdfiumandroid)
     implementation(libs.materialkolor)
     implementation(libs.haze)
+
+    testImplementation(libs.junit)
 }

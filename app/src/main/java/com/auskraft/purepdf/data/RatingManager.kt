@@ -16,8 +16,8 @@ private val Context.ratingDataStore: DataStore<Preferences> by preferencesDataSt
 /**
  * Tracks launch count and whether the user has rated, and opens the store / feedback email.
  *
- * The app isn't published yet, so [STORE_URL] is empty and [hasStore] is false — high ratings
- * just thank the user. Set [STORE_URL] to the listing once published.
+ * The app is published on RuStore, so [STORE_URL] points to the live listing and [hasStore] is
+ * true — 4–5 stars open the store, 1–3 stars open a feedback email instead.
  */
 class RatingManager(private val context: Context) {
 

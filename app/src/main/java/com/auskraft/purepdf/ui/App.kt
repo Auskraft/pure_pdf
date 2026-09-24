@@ -33,6 +33,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -46,6 +47,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.auskraft.purepdf.PurePdfApplication
+import com.auskraft.purepdf.data.db.RecentDocEntity
 import com.auskraft.purepdf.data.settings.AppSettings
 import com.auskraft.purepdf.data.settings.LibraryView
 import com.auskraft.purepdf.ui.docs.ConsentScreen
@@ -55,6 +57,9 @@ import com.auskraft.purepdf.ui.library.LibraryViewModel
 import com.auskraft.purepdf.ui.rate.RateSheet
 import com.auskraft.purepdf.ui.reader.ReaderScreen
 import com.auskraft.purepdf.ui.settings.SettingsScreen
+import com.auskraft.purepdf.ui.support.SupportPrompt
+import com.auskraft.purepdf.ui.support.SupportScreen
+import com.auskraft.purepdf.data.SupportManager
 import com.auskraft.purepdf.ui.theme.PurePdfTheme
 import androidx.compose.ui.platform.LocalContext
 import dev.chrisbanes.haze.HazeState
@@ -64,6 +69,7 @@ import dev.chrisbanes.haze.haze
 import dev.chrisbanes.haze.hazeChild
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.util.UUID
 
 enum class AppTab { Library, Settings }
 
@@ -71,9 +77,39 @@ enum class AppTab { Library, Settings }
 data class OpenDoc(
     val uri: Uri,
     val docKey: String,
+    val readerKey: String,
     val name: String,
     val initialPage: Int,
     val initialZoom: Float,
+)
+
+private val OpenDocSaver = Saver<OpenDoc?, List<String>>(
+    save = { doc ->
+        doc?.let {
+            listOf(
+                it.uri.toString(),
+                it.docKey,
+                it.readerKey,
+                it.name,
+                it.initialPage.toString(),
+                it.initialZoom.toString(),
+            )
+        }
+    },
+    restore = { values ->
+        if (values.size < 6) {
+            null
+        } else {
+            OpenDoc(
+                uri = Uri.parse(values[0]),
+                docKey = values[1],
+                readerKey = UUID.randomUUID().toString(),
+                name = values[3],
+                initialPage = values[4].toIntOrNull() ?: 1,
+                initialZoom = values[5].toFloatOrNull() ?: 1f,
+            )
+        }
+    },
 )
 
 @Composable
@@ -110,12 +146,15 @@ private fun AppContent(
     val snackbarHostState = remember { SnackbarHostState() }
     val hazeState = remember { HazeState() }
     var tab by rememberSaveable { mutableStateOf(AppTab.Library) }
-    var openDoc by remember { mutableStateOf<OpenDoc?>(null) }
+    var openDoc by rememberSaveable(stateSaver = OpenDocSaver) { mutableStateOf<OpenDoc?>(null) }
     var showDocs by remember { mutableStateOf(false) }
     var showRate by remember { mutableStateOf(false) }
+    var showSupport by rememberSaveable { mutableStateOf(false) }
+    var showSupportPrompt by remember { mutableStateOf(false) }
     val colors = MaterialTheme.colorScheme
     val application = LocalContext.current.applicationContext as PurePdfApplication
     val rating = application.container.ratingManager
+    val support = application.container.supportManager
 
     fun showSnackbar(message: String) {
         scope.launch {
@@ -124,20 +163,48 @@ private fun AppContent(
         }
     }
 
+    fun openSupportLink(url: String, payment: Boolean = false) {
+        if (support.openLink(Uri.parse(url))) {
+            if (payment) {
+                showSupportPrompt = false
+                scope.launch { support.markPaymentOpened() }
+            }
+        } else {
+            showSupportPrompt = false
+            showSnackbar("Не удалось открыть ссылку. Проверьте браузер")
+        }
+    }
+
+    fun openEntity(entity: RecentDocEntity) {
+        openDoc = OpenDoc(
+            uri = Uri.parse(entity.uri),
+            docKey = entity.docKey,
+            readerKey = UUID.randomUUID().toString(),
+            name = entity.name,
+            initialPage = if (settings.keepPosition) entity.lastPage else 1,
+            initialZoom = if (settings.keepPosition) entity.zoom else 1f,
+        )
+    }
+
     fun openUri(uri: Uri) {
         scope.launch {
             val entity = runCatching { libraryVm.open(uri) }.getOrNull()
             if (entity == null) {
-                showSnackbar("Не удалось открыть файл")
+                showSnackbar("Файл недоступен. Откройте его заново через «Открыть файл» или «Поделиться».")
                 return@launch
             }
-            openDoc = OpenDoc(
-                uri = uri,
-                docKey = entity.docKey,
-                name = entity.name,
-                initialPage = if (settings.keepPosition) entity.lastPage else 1,
-                initialZoom = if (settings.keepPosition) entity.zoom else 1f,
-            )
+            openEntity(entity)
+        }
+    }
+
+    fun reopenRecent(doc: RecentDocEntity) {
+        scope.launch {
+            val entity = runCatching { libraryVm.reopen(doc) }.getOrNull()
+            if (entity == null) {
+                showSnackbar("Файл недоступен. Откройте его заново через «Открыть файл» или «Поделиться».")
+                return@launch
+            }
+            openEntity(entity)
         }
     }
 
@@ -153,15 +220,24 @@ private fun AppContent(
     }
 
     LaunchedEffect(Unit) {
-        if (rating.shouldAutoPrompt()) {
+        val supportDue = support.shouldPrompt()
+        val ratingDue = rating.shouldAutoPrompt()
+        if (ratingDue || supportDue) {
             delay(1500)
-            rating.markPrompted()
-            showRate = true
+            if (openDoc == null && tab == AppTab.Library && !showDocs && !showSupport) {
+                if (ratingDue) {
+                    rating.markPrompted()
+                    showRate = true
+                } else if (supportDue) {
+                    support.markShown()
+                    showSupportPrompt = true
+                }
+            }
         }
     }
 
     // On the Settings tab, system/gesture back returns to Library instead of exiting.
-    BackHandler(enabled = openDoc == null && !showDocs && tab == AppTab.Settings) { tab = AppTab.Library }
+    BackHandler(enabled = openDoc == null && !showDocs && !showSupport && tab == AppTab.Settings) { tab = AppTab.Library }
 
     Box(Modifier.fillMaxSize().background(colors.surface)) {
         val current = openDoc
@@ -188,7 +264,8 @@ private fun AppContent(
                                     if (settings.libraryView == LibraryView.List) LibraryView.Grid else LibraryView.List,
                                 )
                             },
-                            onOpenDoc = { openUri(Uri.parse(it.uri)) },
+                            onSupport = { showSupport = true },
+                            onOpenDoc = ::reopenRecent,
                             onOpenFile = { openFileLauncher.launch(arrayOf("application/pdf")) },
                             loadPreview = { uriStr, key, w -> libraryVm.preview(Uri.parse(uriStr), key, w) },
                             onPageCount = libraryVm::setPageCount,
@@ -202,6 +279,7 @@ private fun AppContent(
                             onView = settingsVm::setLibraryView,
                             onDensity = settingsVm::setDensity,
                             onRate = { showRate = true },
+                            onSupport = { showSupport = true },
                             onOpenDocs = { showDocs = true },
                         )
                     }
@@ -217,6 +295,15 @@ private fun AppContent(
 
         if (showDocs && current == null) {
             DocsScreen(onClose = { showDocs = false })
+        }
+
+        if (showSupport && current == null) {
+            SupportScreen(
+                onBack = { showSupport = false },
+                onPayment = { openSupportLink(SupportManager.PAYMENT_URL, payment = true) },
+                onTerms = { openSupportLink(SupportManager.TERMS_URL) },
+                onAbout = { openSupportLink(SupportManager.ABOUT_URL) },
+            )
         }
 
         SnackbarHost(
@@ -246,6 +333,12 @@ private fun AppContent(
                     showRate = false
                 },
                 onDismiss = { showRate = false },
+            )
+        }
+        if (showSupportPrompt) {
+            SupportPrompt(
+                onDismiss = { showSupportPrompt = false },
+                onPayment = { openSupportLink(SupportManager.PAYMENT_URL, payment = true) },
             )
         }
     }

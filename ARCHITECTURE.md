@@ -9,7 +9,7 @@ PurePdfApplication      AppContainer (DB, repos, RatingManager); registers a lau
 data/
   settings/             DataStore: AppSettings + enums (AccentPreset, LibraryView, Density)
   db/                   Room: RecentDocEntity, BookmarkEntity, DAOs, AppDatabase
-  LibraryRepository     recents + bookmarks + position; resolves names, persists SAF grants
+  LibraryRepository     recents + bookmarks + position; persists SAF grants or local copies
   RatingManager         launch count / prompt / store + feedback email (DataStore)
 pdf/
   PdfDocumentController PdfiumCore: open, page sizes, render→Bitmap (LRU, single thread), text
@@ -23,6 +23,7 @@ ui/
   settings/             SettingsScreen (reading, appearance, app)
   reader/               ReaderViewModel, ReaderScreen, PageView, ReaderChrome, ReaderDialogs, ReaderScrollBar
   rate/                 RateSheet (star bottom sheet)
+  support/              SupportScreen, SupportPrompt, animated library heart
   docs/                 DocsScreen + ConsentScreen + DocsContent (terms / privacy / data-processing / licenses)
 ```
 
@@ -30,7 +31,7 @@ ui/
 
 **Theme & accent** — [`theme/Theme.kt`](app/src/main/java/com/auskraft/purepdf/ui/theme/Theme.kt). `PurePdfTheme(accent, dark)` calls MaterialKolor's `rememberDynamicColorScheme(seed, isDark)` — the Compose equivalent of the prototype's `makeScheme()`. The 4 accents are seeds on `AccentPreset`. Reader "paper" colors live outside the M3 scheme in `LocalPaperColors` (white/near-black for light; dark-grey/light-grey for dark).
 
-**Persistence** — settings in **DataStore** ([`SettingsRepository`](app/src/main/java/com/auskraft/purepdf/data/settings/SettingsRepository.kt)); recents (with last page+zoom) and bookmarks in **Room** ([`db/`](app/src/main/java/com/auskraft/purepdf/data/db)). `LibraryRepository.recordOpen()` takes a persistable URI grant so recents reopen after restart and resolves display name/size via `ContentResolver`.
+**Persistence** — settings in **DataStore** ([`SettingsRepository`](app/src/main/java/com/auskraft/purepdf/data/settings/SettingsRepository.kt)); recents (with last page+zoom) and bookmarks in **Room** ([`db/`](app/src/main/java/com/auskraft/purepdf/data/db)). `LibraryRepository.recordOpen()` takes a persistable URI grant when the provider offers one; otherwise it immediately imports the PDF into private app storage (`filesDir/imported_pdfs`) while the temporary grant is still alive. This keeps recents working for Telegram/MediaStore/share URIs after restart and offline, while the stable `docKey` remains the original source URI so position/bookmarks survive.
 
 **PDF engine** — [`PdfDocumentController`](app/src/main/java/com/auskraft/purepdf/pdf/PdfDocumentController.kt) opens the doc from a `ParcelFileDescriptor`, serializes all native Pdfium calls onto a single thread, renders pages to ARGB bitmaps (byte-bounded `LruCache`, keyed by page+width), and exposes per-page text + highlight rects. `mapRectToDevice()` converts Pdfium page coordinates to bitmap pixels for highlights. Search ([`PdfSearchEngine`](app/src/main/java/com/auskraft/purepdf/pdf/PdfSearchEngine.kt)) matches against the original page text (`indexOf(..., ignoreCase=true)`) so char indices stay aligned with Pdfium.
 
@@ -38,11 +39,13 @@ ui/
 
 **Navigation, nav bar & gating** — no nav library; `App.kt` holds a tab + nullable reader/docs overlay state, gated behind a first-launch `ConsentScreen` (DataStore `consentAccepted` flag; settings load as nullable so the splash navy holds instead of flashing the gate). The bottom nav is a **floating frosted-glass pill** (centred so the icons sit close together) over a Haze-blurred backdrop — the tab content is the haze source (`Modifier.haze`), the pill is the haze child (`Modifier.hazeChild`). `BackHandler`s implement predictive back: reader→library (search closes first), docs sub-screen→list→close, Settings tab→Library (`android:enableOnBackInvokedCallback=true`).
 
-**Library previews** — [`PdfThumbnailCache`](app/src/main/java/com/auskraft/purepdf/pdf/PdfThumbnailCache.kt) renders each recent's first page off-thread (LRU-cached) and returns its page count; rows fall back to a stylised placeholder when a document can't be opened (lost URI grant). Page count is backfilled into Room from both the reader and the thumbnail render, and shown as "size · N стр. · date".
+**Library previews** — [`PdfThumbnailCache`](app/src/main/java/com/auskraft/purepdf/pdf/PdfThumbnailCache.kt) renders each recent's first page off-thread (LRU-cached) and returns its page count; rows fall back to a stylised placeholder when a document can't be opened (for example, an old pre-import recent whose URI grant is already gone). Page count is backfilled into Room from both the reader and the thumbnail render, and shown as "size · N стр. · date".
 
 **Intents** — `MainActivity` extracts a PDF Uri from `ACTION_VIEW`/`ACTION_SEND` (and `onNewIntent`, `launchMode=singleTask`) into a `StateFlow` the composition consumes and opens directly.
 
 **Rating** — [`RatingManager`](app/src/main/java/com/auskraft/purepdf/data/RatingManager.kt) counts launches in DataStore; `App.kt` auto-prompts once after 3 launches, and Settings has a manual "Оценить приложение" row. [`RateSheet`](app/src/main/java/com/auskraft/purepdf/ui/rate/RateSheet.kt): `hasStore` gates the action — 4–5★ open `STORE_URL` (the RuStore listing), otherwise a thank-you snackbar; 1–3★ open a feedback email.
+
+**Voluntary support** — [`SupportManager`](app/src/main/java/com/auskraft/purepdf/data/SupportManager.kt) owns the payment, terms and author URLs plus a separate DataStore for prompt timing. The library header heart and Settings row open [`SupportScreen`](app/src/main/java/com/auskraft/purepdf/ui/support/SupportScreen.kt), with a direct external-browser payment action and the unchanged source QR under `drawable-nodpi`. After 14 days, `App.kt` may show `SupportPrompt`; it records the actual display time, waits 14 days between displays and gives the rating prompt priority. A successful browser handoff disables future automatic prompts, while manual entry remains available. The app has no payment SDK, Internet permission or payment-result access.
 
 **Documentation & consent** — [`docs/`](app/src/main/java/com/auskraft/purepdf/ui/docs): a "Документация" Settings row opens `DocsScreen` (Terms / Privacy / Data-processing / Licenses, text in `DocsContent.kt`, rendered in a scrollable viewer). `ConsentScreen` reuses the same viewer for the first-launch gate; the legal texts mirror the operator's real documents (adapted to Pure PDF) and are also published at `legal/index.html` for the store's privacy-policy URL.
 
